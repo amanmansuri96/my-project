@@ -1,0 +1,88 @@
+import { prisma } from "@/lib/db/prisma";
+import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
+import type { AgentRanking, Tier } from "@/types";
+import { RefreshButton } from "@/components/leaderboard/refresh-button";
+
+function getTierFromRank(rank: number, totalEligible: number): Tier {
+  if (totalEligible === 0) return { name: "Rising", color: "green" };
+  const percentile = ((totalEligible - rank) / totalEligible) * 100;
+  if (percentile >= 90) return { name: "Diamond", color: "blue" };
+  if (percentile >= 75) return { name: "Gold", color: "yellow" };
+  if (percentile >= 50) return { name: "Silver", color: "gray" };
+  if (percentile >= 25) return { name: "Bronze", color: "orange" };
+  return { name: "Rising", color: "green" };
+}
+
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage() {
+  // Get latest snapshot date
+  const latestSnapshot = await prisma.rankingSnapshot.findFirst({
+    orderBy: { snapshotDate: "desc" },
+    select: { snapshotDate: true },
+  });
+
+  if (!latestSnapshot) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="text-center py-20">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            No ranking data yet
+          </h2>
+          <p className="text-gray-500 mb-6">
+            Trigger a refresh to pull data from Intercom and compute rankings.
+          </p>
+          <RefreshButton />
+        </div>
+      </div>
+    );
+  }
+
+  // Fetch all snapshots for the latest date
+  const snapshots = await prisma.rankingSnapshot.findMany({
+    where: { snapshotDate: latestSnapshot.snapshotDate },
+    include: { agent: true },
+    orderBy: [{ isEligible: "desc" }, { rank: "asc" }],
+  });
+
+  const eligibleCount = snapshots.filter((s) => s.isEligible).length;
+
+  const rankings: AgentRanking[] = snapshots.map((s) => ({
+    intercomAdminId: s.agent.intercomAdminId,
+    displayName: s.agent.displayName,
+    email: s.agent.email ?? undefined,
+    conversationCount: s.conversationCount,
+    p95ResponseTimeSeconds: s.p95ResponseTimeSeconds,
+    avgHandlingTimeSeconds: s.avgHandlingTimeSeconds,
+    cxScorePercent: s.cxScorePercent,
+    qaScore: s.qaScore ?? undefined,
+    p95ResponsePercentile: s.p95ResponsePercentile,
+    ahtPercentile: s.ahtPercentile,
+    cxScorePercentile: s.cxScorePercentile,
+    qaScorePercentile: s.qaScorePercentile ?? undefined,
+    compositeScore: s.compositeScore,
+    rank: s.rank,
+    isEligible: s.isEligible,
+    tier: s.isEligible
+      ? getTierFromRank(s.rank, eligibleCount)
+      : { name: "Rising", color: "green" },
+  }));
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Agent Ranker</h1>
+          <p className="text-gray-500">
+            Aspora CX Team Performance — Month to Date
+          </p>
+        </div>
+        <RefreshButton />
+      </div>
+      <LeaderboardTable
+        rankings={rankings}
+        lastRefreshed={latestSnapshot.snapshotDate}
+      />
+    </div>
+  );
+}

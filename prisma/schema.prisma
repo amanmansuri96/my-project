@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Agent {
+  id               String            @id @default(cuid())
+  intercomAdminId  String            @unique
+  anthropodAgentId String?
+  displayName      String
+  email            String?
+  isActive         Boolean           @default(true)
+  snapshots        RankingSnapshot[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model RankingSnapshot {
+  id        String @id @default(cuid())
+  agentId   String
+  agent     Agent  @relation(fields: [agentId], references: [id])
+
+  periodStart  DateTime
+  periodEnd    DateTime
+  snapshotDate DateTime
+
+  // Raw metrics
+  conversationCount      Int
+  p95ResponseTimeSeconds Float
+  avgHandlingTimeSeconds Float
+  cxScorePercent         Float
+  qaScore                Float?
+
+  // Computed percentiles (0-100)
+  p95ResponsePercentile Float
+  ahtPercentile         Float
+  cxScorePercentile     Float
+  qaScorePercentile     Float?
+  compositeScore        Float
+  rank                  Int
+
+  isEligible Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([agentId, snapshotDate])
+  @@index([snapshotDate])
+}
+
+model RefreshLog {
+  id          String    @id @default(cuid())
+  startedAt   DateTime
+  completedAt DateTime?
+  status      String // "success" | "partial" | "failed"
+  errorMsg    String?
+  agentCount  Int?
+  ticketCount Int?
+}
