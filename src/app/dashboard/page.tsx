@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
 import type { AgentRanking, Tier } from "@/types";
 import { RefreshButton } from "@/components/leaderboard/refresh-button";
+import Link from "next/link";
 
 function getTierFromRank(rank: number, totalEligible: number): Tier {
   if (totalEligible === 0) return { name: "Rising", color: "green" };
@@ -13,11 +14,28 @@ function getTierFromRank(rank: number, totalEligible: number): Tier {
   return { name: "Rising", color: "green" };
 }
 
+const CHANNEL_CONFIG = {
+  chat: { label: "Chat", minConversations: 100 },
+  email: { label: "Email", minConversations: 30 },
+} as const;
+
+type Channel = keyof typeof CHANNEL_CONFIG;
+
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  // Get latest snapshot date
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ channel?: string }>;
+}) {
+  const { channel: rawChannel } = await searchParams;
+  const channel: Channel =
+    rawChannel === "email" ? "email" : "chat";
+  const { label, minConversations } = CHANNEL_CONFIG[channel];
+
+  // Get latest snapshot date for this channel
   const latestSnapshot = await prisma.rankingSnapshot.findFirst({
+    where: { channel },
     orderBy: { snapshotDate: "desc" },
     select: { snapshotDate: true },
   });
@@ -25,9 +43,10 @@ export default async function DashboardPage() {
   if (!latestSnapshot) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
+        <ChannelToggle active={channel} />
         <div className="text-center py-20">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            No ranking data yet
+            No {label.toLowerCase()} ranking data yet
           </h2>
           <p className="text-gray-500 mb-6">
             Trigger a refresh to pull data from Intercom and compute rankings.
@@ -38,9 +57,9 @@ export default async function DashboardPage() {
     );
   }
 
-  // Fetch all snapshots for the latest date
+  // Fetch all snapshots for the latest date + channel
   const snapshots = await prisma.rankingSnapshot.findMany({
-    where: { snapshotDate: latestSnapshot.snapshotDate },
+    where: { snapshotDate: latestSnapshot.snapshotDate, channel },
     include: { agent: true },
     orderBy: [{ isEligible: "desc" }, { rank: "asc" }],
   });
@@ -79,10 +98,33 @@ export default async function DashboardPage() {
         </div>
         <RefreshButton />
       </div>
+      <ChannelToggle active={channel} />
       <LeaderboardTable
         rankings={rankings}
         lastRefreshed={latestSnapshot.snapshotDate}
+        channel={channel}
+        minConversations={minConversations}
       />
+    </div>
+  );
+}
+
+function ChannelToggle({ active }: { active: Channel }) {
+  return (
+    <div className="flex gap-2 mb-4">
+      {(Object.keys(CHANNEL_CONFIG) as Channel[]).map((ch) => (
+        <Link
+          key={ch}
+          href={`/dashboard?channel=${ch}`}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            active === ch
+              ? "bg-gray-900 text-white"
+              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+          }`}
+        >
+          {CHANNEL_CONFIG[ch].label}
+        </Link>
+      ))}
     </div>
   );
 }

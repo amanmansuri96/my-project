@@ -27,6 +27,7 @@ model RankingSnapshot {
   periodStart  DateTime
   periodEnd    DateTime
   snapshotDate DateTime
+  channel      String   @default("chat")
 
   // Raw metrics
   conversationCount      Int
@@ -47,7 +48,7 @@ model RankingSnapshot {
 
   createdAt DateTime @default(now())
 
-  @@unique([agentId, snapshotDate])
+  @@unique([agentId, snapshotDate, channel])
   @@index([snapshotDate])
 }
 
@@ -56,6 +57,7 @@ model RefreshLog {
   startedAt   DateTime
   completedAt DateTime?
   status      String // "success" | "partial" | "failed"
+  channel     String?
   errorMsg    String?
   agentCount  Int?
   ticketCount Int?

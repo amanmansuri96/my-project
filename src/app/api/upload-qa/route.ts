@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { parseQAScoresCSV, qaScoresToMap } from "@/lib/anthropod/client";
-import { refreshRankings } from "@/lib/ranking/compute-rankings";
+import { inngest } from "@/lib/inngest/client";
 
 export async function POST(request: Request) {
   try {
@@ -26,11 +26,22 @@ export async function POST(request: Request) {
 
     const qaScores = qaScoresToMap(entries);
 
-    // Refresh rankings with the uploaded QA scores
-    const result = await refreshRankings(qaScores);
+    // Convert Map to plain object for JSON serialization in Inngest events
+    const qaScoresRecord = Object.fromEntries(qaScores);
+
+    await inngest.send([
+      {
+        name: "refresh/rankings.requested",
+        data: { channel: "chat", qaScores: qaScoresRecord },
+      },
+      {
+        name: "refresh/rankings.requested",
+        data: { channel: "email", qaScores: qaScoresRecord },
+      },
+    ]);
 
     return NextResponse.json({
-      ...result,
+      status: "triggered",
       qaScoresLoaded: entries.length,
     });
   } catch (error) {

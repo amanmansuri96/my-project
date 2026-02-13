@@ -8,10 +8,14 @@ export const dynamic = "force-dynamic";
 
 export default async function AgentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ channel?: string }>;
 }) {
   const { id } = await params;
+  const { channel: rawChannel } = await searchParams;
+  const channel = rawChannel === "email" ? "email" : "chat";
 
   const agent = await prisma.agent.findFirst({
     where: { intercomAdminId: id },
@@ -19,9 +23,9 @@ export default async function AgentDetailPage({
 
   if (!agent) return notFound();
 
-  // Get recent snapshots for trend
+  // Get recent snapshots for trend, filtered by channel
   const snapshots = await prisma.rankingSnapshot.findMany({
-    where: { agentId: agent.id },
+    where: { agentId: agent.id, channel },
     orderBy: { snapshotDate: "desc" },
     take: 30,
   });
@@ -31,7 +35,15 @@ export default async function AgentDetailPage({
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-2xl font-bold">{agent.displayName}</h1>
-        <p className="text-gray-500 mt-2">No ranking data available yet.</p>
+        <p className="text-gray-500 mt-2">
+          No {channel} ranking data available yet.
+        </p>
+        <a
+          href={`/dashboard?channel=${channel}`}
+          className="inline-block mt-4 text-sm text-blue-600 hover:underline"
+        >
+          Back to Leaderboard
+        </a>
       </div>
     );
   }
@@ -73,6 +85,9 @@ export default async function AgentDetailPage({
           {agent.email && (
             <p className="text-gray-500">{agent.email}</p>
           )}
+          <Badge variant="outline" className="mt-1 capitalize">
+            {channel}
+          </Badge>
         </div>
         {latest.isEligible && (
           <div className="text-center">
@@ -159,7 +174,7 @@ export default async function AgentDetailPage({
       </Card>
 
       <a
-        href="/dashboard"
+        href={`/dashboard?channel=${channel}`}
         className="inline-block text-sm text-blue-600 hover:underline"
       >
         Back to Leaderboard

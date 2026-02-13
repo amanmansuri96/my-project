@@ -15,17 +15,13 @@ export function RefreshButton() {
       const res = await fetch("/api/refresh", { method: "POST" });
       const data = await res.json();
 
-      if (data.status === "success") {
-        setResult(
-          `Refreshed: ${data.agentCount} agents, ${data.ticketCount} tickets`
-        );
-        // Reload to show new data
-        setTimeout(() => window.location.reload(), 1500);
+      if (data.status === "triggered") {
+        setResult("Refresh queued — data will update shortly");
       } else {
-        setResult(`Error: ${data.errorMsg || "Unknown error"}`);
+        setResult(`Error: ${data.error || "Unknown error"}`);
       }
     } catch {
-      setResult("Failed to refresh. Check your connection.");
+      setResult("Failed to queue refresh. Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -37,7 +33,7 @@ export function RefreshButton() {
         <span className="text-sm text-gray-600">{result}</span>
       )}
       <Button onClick={handleRefresh} disabled={loading} variant="outline">
-        {loading ? "Refreshing..." : "Refresh Rankings"}
+        {loading ? "Queuing..." : "Refresh Rankings"}
       </Button>
     </div>
   );

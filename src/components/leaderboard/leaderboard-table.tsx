@@ -18,9 +18,13 @@ import { Separator } from "@/components/ui/separator";
 export function LeaderboardTable({
   rankings,
   lastRefreshed,
+  channel = "chat",
+  minConversations = 100,
 }: {
   rankings: AgentRanking[];
   lastRefreshed: Date | null;
+  channel?: string;
+  minConversations?: number;
 }) {
   const eligible = rankings.filter((r) => r.isEligible);
   const ineligible = rankings.filter((r) => !r.isEligible);
@@ -70,7 +74,7 @@ export function LeaderboardTable({
                   </TableCell>
                   <TableCell className="font-medium">
                     <a
-                      href={`/dashboard/agent/${agent.intercomAdminId}`}
+                      href={`/dashboard/agent/${agent.intercomAdminId}?channel=${channel}`}
                       className="text-blue-600 hover:underline"
                     >
                       {agent.displayName}
@@ -125,7 +129,7 @@ export function LeaderboardTable({
                     <TableCell colSpan={8}>
                       <Separator className="my-2" />
                       <span className="text-xs text-gray-400">
-                        Below minimum 100 conversations — not ranked
+                        Below minimum {minConversations} conversations — not ranked
                       </span>
                     </TableCell>
                   </TableRow>
@@ -145,7 +149,7 @@ export function LeaderboardTable({
                       </TableCell>
                       <TableCell colSpan={4}>
                         <span className="text-xs text-gray-400">
-                          {agent.conversationCount}/100 conversations
+                          {agent.conversationCount}/{minConversations} conversations
                         </span>
                       </TableCell>
                       <TableCell />

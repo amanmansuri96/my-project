@@ -1,8 +1,24 @@
-import type { IntercomConversation, IntercomTicket, IntercomAdmin } from "./types";
+import type { IntercomConversation, IntercomAdmin } from "./types";
 import type { AgentMetrics } from "@/types";
 
+// Max reasonable handling time: 4 hours. Anything above is likely a
+// still-open conversation or data anomaly and would skew averages.
+const MAX_HANDLING_TIME_SECONDS = 4 * 60 * 60;
+
+// Admin IDs to exclude from rankings (bots, system accounts, non-agents)
+const EXCLUDED_ADMIN_IDS = new Set([
+  "8771159", // Help -
+  "8915493", // Jagdish Prabhu
+  "8831788", // Rintol Subash
+  "8833526", // Nisha Prakash
+  "8833695", // Usha P
+  "8833161", // Praveen Kumar
+  "8832131", // Shanmukh Repalle
+  "8835496", // Sadiq Muhammed
+]);
+
 interface ConversationData {
-  frtSeconds: number | null; // first_admin_reply_at - first_assignment_at
+  frtSeconds: number | null; // first_admin_reply_at - last_assignment_at
   handlingTimeSeconds: number | null;
   cxScoreRating: number | null; // 1-5 from custom_attributes
 }
@@ -15,11 +31,19 @@ function extractConversationData(
 ): ConversationData {
   const stats = conv.statistics;
 
-  // FRT (bot inbox excluded) = first_admin_reply_at - first_assignment_at
+  // FRT (bot inbox excluded) = first_admin_reply_at - last_assignment_at
+  // last_assignment_at = when the conversation was assigned to the human teammate
+  // (first_assignment_at is the bot's auto-assignment, which is too early)
   let frtSeconds: number | null = null;
-  if (stats.first_admin_reply_at && stats.first_assignment_at) {
-    frtSeconds = stats.first_admin_reply_at - stats.first_assignment_at;
-    if (frtSeconds < 0) frtSeconds = null; // Defensive: skip invalid data
+  if (stats.first_admin_reply_at && stats.last_assignment_at) {
+    frtSeconds = stats.first_admin_reply_at - stats.last_assignment_at;
+    if (frtSeconds < 0) frtSeconds = null; // Defensive: skip if reply before assignment (reassigned convos)
+  }
+
+  // Handling time: cap at MAX to exclude still-open or anomalous conversations
+  let handlingTimeSeconds: number | null = stats.handling_time ?? null;
+  if (handlingTimeSeconds !== null && handlingTimeSeconds > MAX_HANDLING_TIME_SECONDS) {
+    handlingTimeSeconds = null; // Exclude from average
   }
 
   // CX Score from custom_attributes
@@ -29,7 +53,7 @@ function extractConversationData(
 
   return {
     frtSeconds,
-    handlingTimeSeconds: stats.handling_time ?? null,
+    handlingTimeSeconds,
     cxScoreRating,
   };
 }
@@ -45,19 +69,17 @@ function computeP95(values: number[]): number {
 }
 
 /**
- * Aggregate per-agent metrics from tickets and their linked conversations.
+ * Aggregate per-agent metrics from customer conversations.
  *
- * @param tickets - Customer tickets from Intercom
- * @param conversations - Map of conversationId → conversation object
- * @param admins - Map of adminId → admin object
+ * @param conversations - Customer conversations (already filtered for "Customer ticket" category)
+ * @param admins - Map of adminId (string) → admin object
  * @returns Per-agent aggregated metrics
  */
 export function aggregateMetrics(
-  tickets: IntercomTicket[],
-  conversations: Map<string, IntercomConversation>,
+  conversations: IntercomConversation[],
   admins: Map<string, IntercomAdmin>
 ): AgentMetrics[] {
-  // Group ticket data by agent
+  // Group conversation data by agent (admin_assignee_id is a number)
   const agentData = new Map<
     string,
     {
@@ -69,12 +91,15 @@ export function aggregateMetrics(
     }
   >();
 
-  for (const ticket of tickets) {
-    const agentId = ticket.admin_assignee_id;
-    if (!agentId || !ticket.conversation_id) continue;
+  for (const conv of conversations) {
+    // Attribute conversation to the first teammate (first admin who replied),
+    // not admin_assignee_id which reflects the current assignee after reassignments
+    const firstTeammate = conv.teammates?.admins?.[0]?.id;
+    if (!firstTeammate) continue;
+    if (EXCLUDED_ADMIN_IDS.has(firstTeammate)) continue;
 
-    const conv = conversations.get(ticket.conversation_id);
-    if (!conv) continue;
+    const agentId = firstTeammate;
+    const teammateCount = conv.teammates?.admins?.length ?? 0;
 
     if (!agentData.has(agentId)) {
       agentData.set(agentId, {
@@ -95,7 +120,11 @@ export function aggregateMetrics(
       data.frtValues.push(convData.frtSeconds);
     }
 
-    if (convData.handlingTimeSeconds !== null) {
+    // Only use handling_time for single-teammate conversations where the
+    // full handling_time IS that teammate's handling time.
+    // For multi-teammate conversations, handling_time is the total across
+    // all agents and can't be accurately attributed to one teammate.
+    if (convData.handlingTimeSeconds !== null && teammateCount === 1) {
       data.handlingTimes.push(convData.handlingTimeSeconds);
     }
 

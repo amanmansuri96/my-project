@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { refreshRankings } from "@/lib/ranking/compute-rankings";
+import { inngest } from "@/lib/inngest/client";
 
 export async function GET(request: Request) {
   // Verify cron secret in production
@@ -10,8 +10,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const result = await refreshRankings();
-  return NextResponse.json(result, {
-    status: result.status === "failed" ? 500 : 200,
-  });
+  await inngest.send([
+    { name: "refresh/rankings.requested", data: { channel: "chat" } },
+    { name: "refresh/rankings.requested", data: { channel: "email" } },
+  ]);
+
+  return NextResponse.json({ status: "triggered" });
 }

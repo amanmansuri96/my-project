@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { refreshRankings } from "@/lib/ranking/compute-rankings";
+import { inngest } from "@/lib/inngest/client";
 
 export async function POST() {
-  const result = await refreshRankings();
-  return NextResponse.json(result, {
-    status: result.status === "failed" ? 500 : 200,
-  });
+  await inngest.send([
+    { name: "refresh/rankings.requested", data: { channel: "chat" } },
+    { name: "refresh/rankings.requested", data: { channel: "email" } },
+  ]);
+
+  return NextResponse.json({ status: "triggered" });
 }

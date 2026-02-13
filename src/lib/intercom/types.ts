@@ -1,20 +1,11 @@
-export interface IntercomTicket {
-  id: string;
-  type: "ticket";
-  ticket_id: string;
-  category: string; // "request" = customer ticket
-  admin_assignee_id: string | null;
-  team_assignee_id: string | null;
-  conversation_id: string | null;
-  ticket_state: string;
-  created_at: number;
-  updated_at: number;
-}
-
 export interface IntercomConversation {
   id: string;
   type: "conversation";
-  admin_assignee_id: string | null;
+  admin_assignee_id: number | null;
+  teammates?: {
+    type: "admin.list";
+    admins: { type: "admin"; id: string }[];
+  };
   statistics: ConversationStatistics;
   custom_attributes: Record<string, unknown>;
   conversation_rating?: ConversationRating;
@@ -54,9 +45,11 @@ export interface IntercomAdmin {
   has_inbox_seat: boolean;
 }
 
-export interface IntercomPaginatedResponse<T> {
-  type: "list" | "ticket.list";
-  data: T[];
+/** Response from POST /conversations/search */
+export interface ConversationSearchResponse {
+  type: string;
+  conversations: IntercomConversation[];
+  total_count: number;
   pages?: {
     type: "pages";
     page: number;
@@ -69,18 +62,8 @@ export interface IntercomPaginatedResponse<T> {
   };
 }
 
-export interface IntercomSearchResponse<T> {
-  type: string;
-  data: T[];
-  total_count: number;
-  pages?: {
-    type: "pages";
-    page: number;
-    per_page: number;
-    total_pages: number;
-    next?: {
-      page: number;
-      starting_after: string;
-    };
-  };
+/** Response from GET /admins */
+export interface AdminListResponse {
+  type: "admin.list";
+  admins: IntercomAdmin[];
 }
