@@ -48,6 +48,8 @@ export default async function AgentDetailPage({
     );
   }
 
+  const isTopFive = latest.isEligible && latest.rank <= 5;
+
   const metrics = [
     {
       label: "p95 First Response Time",
@@ -89,7 +91,7 @@ export default async function AgentDetailPage({
             {channel}
           </Badge>
         </div>
-        {latest.isEligible && (
+        {isTopFive && (
           <div className="text-center">
             <div className="text-4xl font-bold text-gray-900">
               #{latest.rank}
@@ -140,7 +142,7 @@ export default async function AgentDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Rank History</CardTitle>
+          <CardTitle>Performance History</CardTitle>
         </CardHeader>
         <CardContent>
           {snapshots.length <= 1 ? (
@@ -149,25 +151,30 @@ export default async function AgentDetailPage({
             </p>
           ) : (
             <div className="space-y-1">
-              {snapshots.slice(0, 14).map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between text-sm border-b py-1"
-                >
-                  <span className="text-gray-500">
-                    {s.snapshotDate.toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </span>
-                  <span className="font-medium">
-                    #{s.rank} — {s.compositeScore.toFixed(1)}
-                  </span>
-                  <span className="text-gray-400">
-                    {s.conversationCount} convos
-                  </span>
-                </div>
-              ))}
+              {snapshots.slice(0, 14).map((s) => {
+                const snapshotIsTopFive = s.isEligible && s.rank <= 5;
+                return (
+                  <div
+                    key={s.id}
+                    className="flex items-center justify-between text-sm border-b py-1"
+                  >
+                    <span className="text-gray-500">
+                      {s.snapshotDate.toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </span>
+                    <span className="font-medium">
+                      {snapshotIsTopFive
+                        ? `#${s.rank} — ${s.compositeScore.toFixed(1)}`
+                        : "—"}
+                    </span>
+                    <span className="text-gray-400">
+                      {s.conversationCount} convos
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </CardContent>

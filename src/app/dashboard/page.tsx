@@ -1,17 +1,17 @@
 import { prisma } from "@/lib/db/prisma";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
-import type { AgentRanking, Tier } from "@/types";
+import type { AgentRanking } from "@/types";
 import { RefreshButton } from "@/components/leaderboard/refresh-button";
 import Link from "next/link";
 
-function getTierFromRank(rank: number, totalEligible: number): Tier {
-  if (totalEligible === 0) return { name: "Rising", color: "green" };
-  const percentile = ((totalEligible - rank) / totalEligible) * 100;
-  if (percentile >= 90) return { name: "Diamond", color: "blue" };
-  if (percentile >= 75) return { name: "Gold", color: "yellow" };
-  if (percentile >= 50) return { name: "Silver", color: "gray" };
-  if (percentile >= 25) return { name: "Bronze", color: "orange" };
-  return { name: "Rising", color: "green" };
+/** Fisher-Yates shuffle — returns a new array in random order */
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
 const CHANNEL_CONFIG = {
@@ -64,9 +64,7 @@ export default async function DashboardPage({
     orderBy: [{ isEligible: "desc" }, { rank: "asc" }],
   });
 
-  const eligibleCount = snapshots.filter((s) => s.isEligible).length;
-
-  const rankings: AgentRanking[] = snapshots.map((s) => ({
+  const allRankings: AgentRanking[] = snapshots.map((s) => ({
     intercomAdminId: s.agent.intercomAdminId,
     displayName: s.agent.displayName,
     email: s.agent.email ?? undefined,
@@ -82,10 +80,14 @@ export default async function DashboardPage({
     compositeScore: s.compositeScore,
     rank: s.rank,
     isEligible: s.isEligible,
-    tier: s.isEligible
-      ? getTierFromRank(s.rank, eligibleCount)
-      : { name: "Rising", color: "green" },
+    isTopFive: s.isEligible && s.rank <= 5,
   }));
+
+  // Top 5 stay in rank order; rest get shuffled to avoid public ordering
+  const topFive = allRankings.filter((r) => r.isTopFive);
+  const restEligible = shuffle(allRankings.filter((r) => r.isEligible && !r.isTopFive));
+  const ineligible = allRankings.filter((r) => !r.isEligible);
+  const rankings = [...topFive, ...restEligible, ...ineligible];
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">

@@ -2,7 +2,6 @@
 
 import type { AgentRanking } from "@/types";
 import { formatDuration, formatPercent } from "@/lib/utils/format";
-import { RankBadge } from "./rank-badge";
 import { MetricCell } from "./metric-cell";
 import {
   Table,
@@ -26,7 +25,8 @@ export function LeaderboardTable({
   channel?: string;
   minConversations?: number;
 }) {
-  const eligible = rankings.filter((r) => r.isEligible);
+  const topFive = rankings.filter((r) => r.isTopFive);
+  const restEligible = rankings.filter((r) => r.isEligible && !r.isTopFive);
   const ineligible = rankings.filter((r) => !r.isEligible);
 
   return (
@@ -56,7 +56,7 @@ export function LeaderboardTable({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[140px]">Rank</TableHead>
+                <TableHead className="w-[80px]">Rank</TableHead>
                 <TableHead>Teammate</TableHead>
                 <TableHead className="text-center">Conversations</TableHead>
                 <TableHead>p95 FRT</TableHead>
@@ -67,69 +67,46 @@ export function LeaderboardTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {eligible.map((agent) => (
-                <TableRow key={agent.intercomAdminId}>
-                  <TableCell>
-                    <RankBadge rank={agent.rank} tier={agent.tier} />
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <a
-                      href={`/dashboard/agent/${agent.intercomAdminId}?channel=${channel}`}
-                      className="text-blue-600 hover:underline"
-                    >
-                      {agent.displayName}
-                    </a>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {agent.conversationCount}
-                  </TableCell>
-                  <TableCell>
-                    <MetricCell
-                      rawValue={formatDuration(agent.p95ResponseTimeSeconds)}
-                      percentile={agent.p95ResponsePercentile}
-                      isEligible={true}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <MetricCell
-                      rawValue={formatDuration(agent.avgHandlingTimeSeconds)}
-                      percentile={agent.ahtPercentile}
-                      isEligible={true}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <MetricCell
-                      rawValue={formatPercent(agent.cxScorePercent)}
-                      percentile={agent.cxScorePercentile}
-                      isEligible={true}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {agent.qaScore !== undefined ? (
-                      <MetricCell
-                        rawValue={agent.qaScore.toFixed(1)}
-                        percentile={agent.qaScorePercentile ?? 0}
-                        isEligible={true}
-                      />
-                    ) : (
-                      <span className="text-sm text-gray-400">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span className="text-lg font-bold text-gray-900">
-                      {agent.compositeScore.toFixed(1)}
-                    </span>
-                  </TableCell>
-                </TableRow>
+              {/* ── Top 5: full visibility ── */}
+              {topFive.map((agent) => (
+                <AgentRow
+                  key={agent.intercomAdminId}
+                  agent={agent}
+                  channel={channel}
+                  showRank
+                  showComposite
+                />
               ))}
 
+              {/* ── Separator between top 5 and rest ── */}
+              {restEligible.length > 0 && topFive.length > 0 && (
+                <TableRow>
+                  <TableCell colSpan={8}>
+                    <Separator className="my-2" />
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {/* ── Rest of eligible: shuffled, no rank, no composite ── */}
+              {restEligible.map((agent) => (
+                <AgentRow
+                  key={agent.intercomAdminId}
+                  agent={agent}
+                  channel={channel}
+                  showRank={false}
+                  showComposite={false}
+                />
+              ))}
+
+              {/* ── Ineligible: below min conversations ── */}
               {ineligible.length > 0 && (
                 <>
                   <TableRow>
                     <TableCell colSpan={8}>
                       <Separator className="my-2" />
                       <span className="text-xs text-gray-400">
-                        Below minimum {minConversations} conversations — not ranked
+                        Below minimum {minConversations} conversations — not
+                        ranked
                       </span>
                     </TableCell>
                   </TableRow>
@@ -149,7 +126,8 @@ export function LeaderboardTable({
                       </TableCell>
                       <TableCell colSpan={4}>
                         <span className="text-xs text-gray-400">
-                          {agent.conversationCount}/{minConversations} conversations
+                          {agent.conversationCount}/{minConversations}{" "}
+                          conversations
                         </span>
                       </TableCell>
                       <TableCell />
@@ -162,5 +140,80 @@ export function LeaderboardTable({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/** Reusable row for both top-5 and rest-of-eligible agents */
+function AgentRow({
+  agent,
+  channel,
+  showRank,
+  showComposite,
+}: {
+  agent: AgentRanking;
+  channel: string;
+  showRank: boolean;
+  showComposite: boolean;
+}) {
+  return (
+    <TableRow>
+      <TableCell>
+        {showRank ? (
+          <span className="text-xl font-bold text-gray-900">#{agent.rank}</span>
+        ) : (
+          <span className="text-sm text-gray-400">—</span>
+        )}
+      </TableCell>
+      <TableCell className="font-medium">
+        <a
+          href={`/dashboard/agent/${agent.intercomAdminId}?channel=${channel}`}
+          className="text-blue-600 hover:underline"
+        >
+          {agent.displayName}
+        </a>
+      </TableCell>
+      <TableCell className="text-center">{agent.conversationCount}</TableCell>
+      <TableCell>
+        <MetricCell
+          rawValue={formatDuration(agent.p95ResponseTimeSeconds)}
+          percentile={agent.p95ResponsePercentile}
+          isEligible={true}
+        />
+      </TableCell>
+      <TableCell>
+        <MetricCell
+          rawValue={formatDuration(agent.avgHandlingTimeSeconds)}
+          percentile={agent.ahtPercentile}
+          isEligible={true}
+        />
+      </TableCell>
+      <TableCell>
+        <MetricCell
+          rawValue={formatPercent(agent.cxScorePercent)}
+          percentile={agent.cxScorePercentile}
+          isEligible={true}
+        />
+      </TableCell>
+      <TableCell>
+        {agent.qaScore !== undefined ? (
+          <MetricCell
+            rawValue={agent.qaScore.toFixed(1)}
+            percentile={agent.qaScorePercentile ?? 0}
+            isEligible={true}
+          />
+        ) : (
+          <span className="text-sm text-gray-400">-</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right">
+        {showComposite ? (
+          <span className="text-lg font-bold text-gray-900">
+            {agent.compositeScore.toFixed(1)}
+          </span>
+        ) : (
+          <span className="text-sm text-gray-400">—</span>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }

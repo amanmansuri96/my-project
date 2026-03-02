@@ -17,12 +17,7 @@ export interface AgentRanking extends AgentMetrics {
   compositeScore: number;
   rank: number;
   isEligible: boolean;
-  tier: Tier;
-}
-
-export interface Tier {
-  name: "Diamond" | "Gold" | "Silver" | "Bronze" | "Rising";
-  color: string;
+  isTopFive: boolean;
 }
 
 export interface QAScoreEntry {

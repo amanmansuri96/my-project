@@ -1,4 +1,4 @@
-import type { AgentMetrics, AgentRanking, Tier, RefreshResult } from "@/types";
+import type { AgentMetrics, AgentRanking, RefreshResult } from "@/types";
 import { computePercentiles } from "./percentile";
 import { filterEligible } from "./eligibility";
 import { fetchCustomerConversations } from "@/lib/intercom/fetch-conversations";
@@ -6,16 +6,6 @@ import { fetchAdmins } from "@/lib/intercom/fetch-admins";
 import { aggregateMetrics } from "@/lib/intercom/aggregate-metrics";
 import { getMTDRange } from "@/lib/utils/date";
 import { prisma } from "@/lib/db/prisma";
-
-function getTier(rank: number, totalEligible: number): Tier {
-  if (totalEligible === 0) return { name: "Rising", color: "green" };
-  const percentile = ((totalEligible - rank) / totalEligible) * 100;
-  if (percentile >= 90) return { name: "Diamond", color: "blue" };
-  if (percentile >= 75) return { name: "Gold", color: "yellow" };
-  if (percentile >= 50) return { name: "Silver", color: "gray" };
-  if (percentile >= 25) return { name: "Bronze", color: "orange" };
-  return { name: "Rising", color: "green" };
-}
 
 const CHANNEL_CONFIG = {
   chat: { sourceType: "conversation", minConversations: 100 },
@@ -90,7 +80,7 @@ export function rankAgents(
       compositeScore,
       rank: 0, // assigned after sorting
       isEligible: true,
-      tier: { name: "Rising" as const, color: "green" },
+      isTopFive: false, // assigned after sorting
     };
   });
 
@@ -106,11 +96,10 @@ export function rankAgents(
     return a.displayName.localeCompare(b.displayName);
   });
 
-  // Assign ranks and tiers
-  const totalEligible = eligibleRankings.length;
+  // Assign ranks
   eligibleRankings.forEach((agent, index) => {
     agent.rank = index + 1;
-    agent.tier = getTier(agent.rank, totalEligible);
+    agent.isTopFive = agent.rank <= 5;
   });
 
   // Ineligible agents: no rank, shown at the bottom
@@ -123,7 +112,7 @@ export function rankAgents(
     compositeScore: 0,
     rank: 0,
     isEligible: false,
-    tier: { name: "Rising" as const, color: "green" },
+    isTopFive: false,
   }));
 
   return [...eligibleRankings, ...ineligibleRankings];
