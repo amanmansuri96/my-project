@@ -1,5 +1,4 @@
 import { PrismaClient } from "@/generated/prisma/client";
-import { createClient } from "@libsql/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 
 const globalForPrisma = globalThis as unknown as {
@@ -10,19 +9,19 @@ function createPrismaClient(): PrismaClient {
   const tursoUrl = process.env.TURSO_DATABASE_URL;
 
   if (tursoUrl) {
-    const libsql = createClient({
+    // Production: PrismaLibSql in v7 takes a Config object directly
+    // (it creates its own libsql client internally)
+    const adapter = new PrismaLibSql({
       url: tursoUrl,
       authToken: process.env.TURSO_AUTH_TOKEN,
     });
-    const adapter = new PrismaLibSql(libsql);
     console.log("[Prisma] Connecting to Turso:", tursoUrl);
     return new PrismaClient({ adapter });
   }
 
-  // Local dev: use better-sqlite3 (dynamic require since it's a devDependency)
+  // Local dev only: use better-sqlite3 (devDependency, not available in production)
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { PrismaBetterSqlite3 } = require("@prisma/adapter-better-sqlite3");
-
   const dbUrl = getLocalDbUrl();
   console.log("[Prisma] Connecting to local SQLite:", dbUrl);
   const adapter = new PrismaBetterSqlite3({ url: dbUrl });
