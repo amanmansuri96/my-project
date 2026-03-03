@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
-import { inngest } from "@/lib/inngest/client";
+import { refreshRankings } from "@/lib/ranking/compute-rankings";
 
+/**
+ * Cron endpoint — called daily at 1 AM GMT by Railway cron.
+ * Refreshes both chat and email rankings directly (no Inngest needed).
+ * Protected by CRON_SECRET to prevent unauthorized triggers.
+ */
 export async function GET(request: Request) {
-  // Verify cron secret in production
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
@@ -10,10 +14,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await inngest.send([
-    { name: "refresh/rankings.requested", data: { channel: "chat" } },
-    { name: "refresh/rankings.requested", data: { channel: "email" } },
-  ]);
+  const results = [];
 
-  return NextResponse.json({ status: "triggered" });
+  for (const channel of ["chat", "email"] as const) {
+    console.log(`[Cron] Starting ${channel} refresh...`);
+    const result = await refreshRankings({ channel });
+    results.push({ channel, ...result });
+    console.log(`[Cron] ${channel}: ${result.status}`);
+  }
+
+  return NextResponse.json({ results });
 }
