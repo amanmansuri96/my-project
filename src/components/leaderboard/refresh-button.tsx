@@ -9,19 +9,22 @@ export function RefreshButton() {
 
   async function handleRefresh() {
     setLoading(true);
-    setResult(null);
+    setResult("Refreshing — this takes ~15 minutes...");
 
     try {
       const res = await fetch("/api/refresh", { method: "POST" });
       const data = await res.json();
 
-      if (data.status === "triggered") {
-        setResult("Refresh queued — data will update shortly");
-      } else {
-        setResult(`Error: ${data.error || "Unknown error"}`);
-      }
+      const summary = data.results
+        ?.map(
+          (r: { channel: string; agentCount: number; status: string }) =>
+            `${r.channel}: ${r.agentCount} agents (${r.status})`
+        )
+        .join(", ");
+
+      setResult(summary || "Refresh complete — reload the page");
     } catch {
-      setResult("Failed to queue refresh. Check your connection.");
+      setResult("Failed to refresh. Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -33,7 +36,7 @@ export function RefreshButton() {
         <span className="text-sm text-gray-600">{result}</span>
       )}
       <Button onClick={handleRefresh} disabled={loading} variant="outline">
-        {loading ? "Queuing..." : "Refresh Rankings"}
+        {loading ? "Refreshing..." : "Refresh Rankings"}
       </Button>
     </div>
   );

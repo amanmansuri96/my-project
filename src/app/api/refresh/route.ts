@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { inngest } from "@/lib/inngest/client";
+import { refreshRankings } from "@/lib/ranking/compute-rankings";
 
 export async function POST() {
-  await inngest.send([
-    { name: "refresh/rankings.requested", data: { channel: "chat" } },
-    { name: "refresh/rankings.requested", data: { channel: "email" } },
-  ]);
+  const results = [];
 
-  return NextResponse.json({ status: "triggered" });
+  for (const channel of ["chat", "email"] as const) {
+    console.log(`[Refresh] Starting ${channel}...`);
+    const result = await refreshRankings({ channel });
+    results.push({ channel, ...result });
+  }
+
+  return NextResponse.json({ results });
 }
