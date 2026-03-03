@@ -6,6 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient(): PrismaClient {
   const tursoUrl = process.env.TURSO_DATABASE_URL;
+  console.log("[Prisma] ENV CHECK — TURSO_DATABASE_URL:", tursoUrl ? `set (${tursoUrl.slice(0, 20)}...)` : "NOT SET");
 
   if (tursoUrl) {
     // Production / Vercel: use Turso (hosted libSQL)
