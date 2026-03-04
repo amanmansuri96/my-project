@@ -1,5 +1,6 @@
 import type { IntercomConversation, IntercomAdmin } from "./types";
 import type { AgentMetrics } from "@/types";
+import { detectBurstAssignments } from "./burst-detection";
 
 // Max reasonable handling time: 4 hours. Anything above is likely a
 // still-open conversation or data anomaly and would skew averages.
@@ -81,6 +82,19 @@ export function aggregateMetrics(
   conversations: IntercomConversation[],
   admins: Map<string, IntercomAdmin>
 ): AgentMetrics[] {
+  // --- Burst detection pass: identify bulk-assigned conversations ---
+  // Build assignment records for conversations that have a valid agent and timestamp
+  const assignmentRecords = conversations
+    .map((conv) => {
+      const agentId = conv.teammates?.admins?.[0]?.id;
+      const lastAssignmentAt = conv.statistics.last_assignment_at;
+      if (!agentId || !lastAssignmentAt) return null;
+      return { conversationId: conv.id, agentId, lastAssignmentAt };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  const bulkAssignedIds = detectBurstAssignments(assignmentRecords);
+
   // Group conversation data by agent (admin_assignee_id is a number)
   const agentData = new Map<
     string,
@@ -102,6 +116,7 @@ export function aggregateMetrics(
 
     const agentId = firstTeammate;
     const teammateCount = conv.teammates?.admins?.length ?? 0;
+    const isBulkAssigned = bulkAssignedIds.has(conv.id);
 
     if (!agentData.has(agentId)) {
       agentData.set(agentId, {
@@ -118,16 +133,20 @@ export function aggregateMetrics(
 
     const convData = extractConversationData(conv);
 
-    if (convData.frtSeconds !== null) {
-      data.frtValues.push(convData.frtSeconds);
-    }
+    // Bulk-assigned conversations are excluded from FRT and AHT
+    // but still count toward volume (above) and CX score (below)
+    if (!isBulkAssigned) {
+      if (convData.frtSeconds !== null) {
+        data.frtValues.push(convData.frtSeconds);
+      }
 
-    // Only use handling_time for single-teammate conversations where the
-    // full handling_time IS that teammate's handling time.
-    // For multi-teammate conversations, handling_time is the total across
-    // all agents and can't be accurately attributed to one teammate.
-    if (convData.handlingTimeSeconds !== null && teammateCount === 1) {
-      data.handlingTimes.push(convData.handlingTimeSeconds);
+      // Only use handling_time for single-teammate conversations where the
+      // full handling_time IS that teammate's handling time.
+      // For multi-teammate conversations, handling_time is the total across
+      // all agents and can't be accurately attributed to one teammate.
+      if (convData.handlingTimeSeconds !== null && teammateCount === 1) {
+        data.handlingTimes.push(convData.handlingTimeSeconds);
+      }
     }
 
     if (convData.cxScoreRating !== null) {

@@ -6,6 +6,8 @@ import type { IntercomConversation } from "./types";
  * Keeps only the fields that aggregateMetrics actually reads.
  */
 export interface SlimConversation {
+  /** Intercom conversation ID */
+  id: string;
   /** First teammate admin ID (the agent who first replied) */
   firstTeammateId: string;
   /** Number of teammates on this conversation */
@@ -16,6 +18,8 @@ export interface SlimConversation {
   handlingTimeSeconds: number | null;
   /** CX Score rating 1-5, null if not rated */
   cxScoreRating: number | null;
+  /** Unix timestamp of last assignment (for burst detection) */
+  lastAssignmentAt: number | null;
 }
 
 const MAX_HANDLING_TIME_SECONDS = 4 * 60 * 60;
@@ -54,10 +58,12 @@ export function toSlimConversation(
     typeof cxRaw === "number" && cxRaw >= 1 && cxRaw <= 5 ? cxRaw : null;
 
   return {
+    id: conv.id,
     firstTeammateId: firstTeammate,
     teammateCount: conv.teammates?.admins?.length ?? 0,
     frtSeconds,
     handlingTimeSeconds,
     cxScoreRating,
+    lastAssignmentAt: stats.last_assignment_at,
   };
 }

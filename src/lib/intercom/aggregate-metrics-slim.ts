@@ -1,6 +1,7 @@
 import type { SlimConversation } from "./slim-conversation";
 import type { IntercomAdmin } from "./types";
 import type { AgentMetrics } from "@/types";
+import { detectBurstAssignments } from "./burst-detection";
 
 // Same exclusion list as aggregate-metrics.ts
 const EXCLUDED_ADMIN_IDS = new Set([
@@ -31,6 +32,20 @@ export function aggregateMetricsSlim(
   conversations: SlimConversation[],
   admins: Map<string, IntercomAdmin>
 ): AgentMetrics[] {
+  // --- Burst detection pass ---
+  const assignmentRecords = conversations
+    .map((conv) => {
+      if (!conv.lastAssignmentAt) return null;
+      return {
+        conversationId: conv.id,
+        agentId: conv.firstTeammateId,
+        lastAssignmentAt: conv.lastAssignmentAt,
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  const bulkAssignedIds = detectBurstAssignments(assignmentRecords);
+
   const agentData = new Map<
     string,
     {
@@ -46,6 +61,7 @@ export function aggregateMetricsSlim(
     if (EXCLUDED_ADMIN_IDS.has(conv.firstTeammateId)) continue;
 
     const agentId = conv.firstTeammateId;
+    const isBulkAssigned = bulkAssignedIds.has(conv.id);
 
     if (!agentData.has(agentId)) {
       agentData.set(agentId, {
@@ -60,13 +76,16 @@ export function aggregateMetricsSlim(
     const data = agentData.get(agentId)!;
     data.conversationCount++;
 
-    if (conv.frtSeconds !== null) {
-      data.frtValues.push(conv.frtSeconds);
-    }
+    // Bulk-assigned conversations excluded from FRT and AHT
+    if (!isBulkAssigned) {
+      if (conv.frtSeconds !== null) {
+        data.frtValues.push(conv.frtSeconds);
+      }
 
-    // Only single-teammate conversations for handling time
-    if (conv.handlingTimeSeconds !== null && conv.teammateCount === 1) {
-      data.handlingTimes.push(conv.handlingTimeSeconds);
+      // Only single-teammate conversations for handling time
+      if (conv.handlingTimeSeconds !== null && conv.teammateCount === 1) {
+        data.handlingTimes.push(conv.handlingTimeSeconds);
+      }
     }
 
     if (conv.cxScoreRating !== null) {
