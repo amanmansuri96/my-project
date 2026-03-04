@@ -13,14 +13,5 @@ export function formatPercent(value: number): string {
 }
 
 export function formatPercentile(value: number): string {
-  const rounded = Math.round(value);
-  const suffix =
-    rounded % 10 === 1 && rounded !== 11
-      ? "st"
-      : rounded % 10 === 2 && rounded !== 12
-        ? "nd"
-        : rounded % 10 === 3 && rounded !== 13
-          ? "rd"
-          : "th";
-  return `${rounded}${suffix}`;
+  return `${Math.round(value)}%ile`;
 }
