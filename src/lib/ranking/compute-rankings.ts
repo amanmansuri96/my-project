@@ -56,8 +56,10 @@ export function rankAgents(
       )
     : new Map<string, number>();
 
-  // Compute composite score: equal weight (25% each)
-  // If QA score is missing for an agent, weight the other 3 equally (33.3% each)
+  // Composite score weights: FRT 25%, AHT 25%, CX 30%, QA 20%
+  // If any KPI is missing, redistribute its weight proportionally across the rest
+  const WEIGHTS = { frt: 0.25, aht: 0.25, cx: 0.30, qa: 0.20 };
+
   const eligibleRankings: AgentRanking[] = eligible.map((agent) => {
     const p95P = p95Percentiles.get(agent.intercomAdminId) ?? 0;
     const ahtP = ahtPercentiles.get(agent.intercomAdminId) ?? 0;
@@ -66,9 +68,15 @@ export function rankAgents(
 
     let compositeScore: number;
     if (qaP !== undefined) {
-      compositeScore = p95P * 0.25 + ahtP * 0.25 + cxP * 0.25 + qaP * 0.25;
+      compositeScore =
+        p95P * WEIGHTS.frt + ahtP * WEIGHTS.aht + cxP * WEIGHTS.cx + qaP * WEIGHTS.qa;
     } else {
-      compositeScore = (p95P + ahtP + cxP) / 3;
+      // Redistribute QA weight proportionally: FRT/AHT/CX keep their ratios
+      const totalWithout = WEIGHTS.frt + WEIGHTS.aht + WEIGHTS.cx;
+      compositeScore =
+        p95P * (WEIGHTS.frt / totalWithout) +
+        ahtP * (WEIGHTS.aht / totalWithout) +
+        cxP * (WEIGHTS.cx / totalWithout);
     }
 
     return {

@@ -12,6 +12,8 @@ const EXCLUDED_ADMIN_IDS = new Set([
   "8833161", // Praveen Kumar
   "8832131", // Shanmukh Repalle
   "8835496", // Sadiq Muhammed
+  "6618483", // Prajwal Paloju
+  "9471931", // Suraj Wali
 ]);
 
 function computeP95(values: number[]): number {
