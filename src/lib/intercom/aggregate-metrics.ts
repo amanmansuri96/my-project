@@ -18,6 +18,7 @@ const EXCLUDED_ADMIN_IDS = new Set([
   "8835496", // Sadiq Muhammed
   "6618483", // Prajwal Paloju
   "9471931", // Suraj Wali
+  "9471932", // Nida Iram
 ]);
 
 interface ConversationData {

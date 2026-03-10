@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
+import { TeamMetrics } from "@/components/leaderboard/team-metrics";
 import type { AgentRanking } from "@/types";
 import { RefreshButton } from "@/components/leaderboard/refresh-button";
 import Link from "next/link";
@@ -89,6 +90,27 @@ export default async function DashboardPage({
   const ineligible = allRankings.filter((r) => !r.isEligible);
   const rankings = [...topFive, ...restEligible, ...ineligible];
 
+  // Compute team-level metrics from eligible agents
+  const eligible = allRankings.filter((r) => r.isEligible);
+  const teamMetrics = eligible.length > 0
+    ? {
+        agentCount: eligible.length,
+        totalConversations: eligible.reduce((sum, a) => sum + a.conversationCount, 0),
+        avgP95Frt:
+          eligible.reduce((sum, a) => sum + a.p95ResponseTimeSeconds, 0) / eligible.length,
+        avgAht:
+          eligible.reduce((sum, a) => sum + a.avgHandlingTimeSeconds, 0) / eligible.length,
+        avgCxScore:
+          eligible.reduce((sum, a) => sum + a.cxScorePercent, 0) / eligible.length,
+        avgQaScore: (() => {
+          const withQa = eligible.filter((a) => a.qaScore !== undefined);
+          return withQa.length > 0
+            ? withQa.reduce((sum, a) => sum + a.qaScore!, 0) / withQa.length
+            : null;
+        })(),
+      }
+    : null;
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -101,6 +123,7 @@ export default async function DashboardPage({
         <RefreshButton />
       </div>
       <ChannelToggle active={channel} />
+      {teamMetrics && <TeamMetrics metrics={teamMetrics} />}
       <LeaderboardTable
         rankings={rankings}
         lastRefreshed={latestSnapshot.snapshotDate}
