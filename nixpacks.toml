@@ -2,7 +2,7 @@
 nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["npm ci"]
+cmds = ["NPM_CONFIG_PRODUCTION=false npm ci"]
 
 [phases.build]
 cmds = ["npx prisma generate", "NODE_OPTIONS='--max-old-space-size=4096' npx next build"]
