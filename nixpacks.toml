@@ -8,4 +8,4 @@ cmds = ["NPM_CONFIG_PRODUCTION=false npm ci"]
 cmds = ["npx prisma generate", "NODE_OPTIONS='--max-old-space-size=4096' npx next build"]
 
 [start]
-cmd = "npm start"
+cmd = "npx next start -H 0.0.0.0 -p ${PORT:-3000}"
