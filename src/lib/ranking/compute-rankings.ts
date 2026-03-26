@@ -1,9 +1,10 @@
 import type { AgentMetrics, AgentRanking, RefreshResult } from "@/types";
 import { computePercentiles } from "./percentile";
 import { filterEligible } from "./eligibility";
-import { fetchCustomerConversations } from "@/lib/intercom/fetch-conversations";
 import { fetchAdmins } from "@/lib/intercom/fetch-admins";
-import { aggregateMetrics } from "@/lib/intercom/aggregate-metrics";
+import { aggregateMetricsSlim } from "@/lib/intercom/aggregate-metrics-slim";
+import { fetchIncrementalConversations } from "@/lib/intercom/fetch-incremental";
+import { cacheConversations, loadCachedConversations, cleanupOldMonths } from "@/lib/intercom/conversation-cache";
 import { getMTDRange } from "@/lib/utils/date";
 import { prisma } from "@/lib/db/prisma";
 
@@ -132,7 +133,40 @@ export interface RefreshOptions {
 }
 
 /**
- * Full refresh pipeline: fetch conversations → aggregate → rank → save to DB.
+ * Get the last successful refresh time for a channel in the current month.
+ * Returns null if no successful refresh exists (triggers full fetch).
+ */
+async function getLastRefreshTime(
+  channel: string,
+  monthStart: Date
+): Promise<Date | null> {
+  const lastSuccess = await prisma.refreshLog.findFirst({
+    where: {
+      channel,
+      status: "success",
+      startedAt: { gte: monthStart },
+    },
+    orderBy: { startedAt: "desc" },
+    select: { completedAt: true },
+  });
+
+  return lastSuccess?.completedAt ?? null;
+}
+
+/**
+ * Format a Date as "YYYY-MM" for cache partitioning.
+ */
+function toPeriodMonth(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Incremental refresh pipeline:
+ *   1. Look up last successful refresh time
+ *   2. Fetch only new + updated conversations from Intercom
+ *   3. Upsert into cache, clean up stale months
+ *   4. Load full cached dataset for the month
+ *   5. Aggregate → rank → save (same as before)
  */
 export async function refreshRankings(
   options: RefreshOptions
@@ -140,26 +174,41 @@ export async function refreshRankings(
   const { channel, qaScores } = options;
   const { sourceType, minConversations } = CHANNEL_CONFIG[channel];
   const { start, end } = getMTDRange();
+  const periodMonth = toPeriodMonth(start);
   const snapshotDate = new Date();
 
   try {
-    // Step 1: Fetch customer conversations (filtered for "Customer ticket" category)
-    console.log(`[Refresh] [${channel}] Fetching conversations from ${start.toISOString()} to ${end.toISOString()}`);
-    const conversations = await fetchCustomerConversations(start, end, sourceType);
+    // Step 1: Determine fetch mode from last successful refresh
+    const lastRefreshTime = await getLastRefreshTime(channel, start);
+    const modeLabel = lastRefreshTime ? "incremental" : "full";
+    console.log(`[Refresh] [${channel}] [${modeLabel}] Fetching conversations from ${start.toISOString()} to ${end.toISOString()}`);
 
-    // Step 2: Fetch admin names
+    // Step 2: Fetch new + updated conversations from Intercom
+    const { conversations: freshConversations, fetchMode, pagesFetched } =
+      await fetchIncrementalConversations(start, end, sourceType, lastRefreshTime);
+    console.log(`[Refresh] [${channel}] [${modeLabel}] Fetched ${freshConversations.length} conversations across ${pagesFetched} pages`);
+
+    // Step 3: Upsert fetched conversations into cache
+    await cacheConversations(freshConversations, channel, periodMonth);
+
+    // Step 4: Clean up cache rows from previous months
+    await cleanupOldMonths(periodMonth);
+
+    // Step 5: Load the full cached dataset for aggregation
+    const allConversations = await loadCachedConversations(channel, periodMonth);
+
+    // Step 6: Fetch admin names
     const admins = await fetchAdmins();
 
-    // Step 3: Aggregate per-agent metrics
-    const agentMetrics = aggregateMetrics(conversations, admins);
-    console.log(`[Refresh] [${channel}] Aggregated metrics for ${agentMetrics.length} agents`);
+    // Step 7: Aggregate per-agent metrics from full cached dataset
+    const agentMetrics = aggregateMetricsSlim(allConversations, admins);
+    console.log(`[Refresh] [${channel}] [${modeLabel}] Aggregated metrics for ${agentMetrics.length} agents from ${allConversations.length} cached conversations`);
 
-    // Step 4: Compute rankings
+    // Step 8: Compute rankings
     const rankings = rankAgents(agentMetrics, qaScores, minConversations);
 
-    // Step 5: Save to database
+    // Step 9: Save to database
     for (const ranking of rankings) {
-      // Upsert agent
       const agent = await prisma.agent.upsert({
         where: { intercomAdminId: ranking.intercomAdminId },
         update: { displayName: ranking.displayName, email: ranking.email },
@@ -170,7 +219,6 @@ export async function refreshRankings(
         },
       });
 
-      // Create ranking snapshot
       await prisma.rankingSnapshot.upsert({
         where: {
           agentId_snapshotDate_channel: {
@@ -215,7 +263,7 @@ export async function refreshRankings(
       });
     }
 
-    // Log refresh
+    // Step 10: Log refresh with fetch mode details
     await prisma.refreshLog.create({
       data: {
         startedAt: snapshotDate,
@@ -223,16 +271,18 @@ export async function refreshRankings(
         status: "success",
         channel,
         agentCount: rankings.length,
-        ticketCount: conversations.length,
+        ticketCount: allConversations.length,
+        fetchMode,
+        pagesFetched,
       },
     });
 
-    console.log(`[Refresh] [${channel}] Success: ${rankings.length} agents ranked from ${conversations.length} conversations`);
+    console.log(`[Refresh] [${channel}] [${modeLabel}] Success: ${rankings.length} agents ranked from ${allConversations.length} conversations (fetched ${freshConversations.length} this run)`);
 
     return {
       status: "success",
       agentCount: rankings.length,
-      ticketCount: conversations.length,
+      ticketCount: allConversations.length,
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

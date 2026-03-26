@@ -61,4 +61,21 @@ model RefreshLog {
   errorMsg    String?
   agentCount  Int?
   ticketCount Int?
+  fetchMode   String?  // "full" | "incremental"
+  pagesFetched Int?
+}
+
+model ConversationCache {
+  id                  String   @id    // Intercom conversation ID
+  channel             String
+  periodMonth         String          // "2026-03" for month-boundary cleanup
+  firstTeammateId     String
+  teammateCount       Int
+  frtSeconds          Float?
+  handlingTimeSeconds Float?
+  cxScoreRating       Float?
+  lastAssignmentAt    Float?
+  cachedAt            DateTime @default(now())
+
+  @@index([channel, periodMonth])
 }
