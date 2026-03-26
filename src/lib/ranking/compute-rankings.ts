@@ -178,9 +178,17 @@ export async function refreshRankings(
   const snapshotDate = new Date();
 
   try {
-    // Step 1: Determine fetch mode from last successful refresh
-    const lastRefreshTime = await getLastRefreshTime(channel, start);
+    // Step 1: Determine fetch mode — only go incremental if cache is already populated
+    const cacheCount = await prisma.conversationCache.count({
+      where: { channel, periodMonth },
+    });
+    const lastRefreshTime = cacheCount > 0
+      ? await getLastRefreshTime(channel, start)
+      : null; // empty cache → force full fetch even if RefreshLog has entries
     const modeLabel = lastRefreshTime ? "incremental" : "full";
+    if (cacheCount === 0) {
+      console.log(`[Refresh] [${channel}] Cache is empty — forcing full fetch to populate`);
+    }
     console.log(`[Refresh] [${channel}] [${modeLabel}] Fetching conversations from ${start.toISOString()} to ${end.toISOString()}`);
 
     // Step 2: Fetch new + updated conversations from Intercom
