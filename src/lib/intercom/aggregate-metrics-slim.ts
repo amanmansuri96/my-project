@@ -31,21 +31,28 @@ function computeP95(values: number[]): number {
  */
 export function aggregateMetricsSlim(
   conversations: SlimConversation[],
-  admins: Map<string, IntercomAdmin>
+  admins: Map<string, IntercomAdmin>,
+  options?: { skipBurstDetection?: boolean }
 ): AgentMetrics[] {
-  // --- Burst detection pass ---
-  const assignmentRecords = conversations
-    .map((conv) => {
-      if (!conv.lastAssignmentAt) return null;
-      return {
-        conversationId: conv.id,
-        agentId: conv.firstTeammateId,
-        lastAssignmentAt: conv.lastAssignmentAt,
-      };
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+  // --- Burst detection pass (chat only, skipped for email) ---
+  let bulkAssignedIds: Set<string>;
 
-  const bulkAssignedIds = detectBurstAssignments(assignmentRecords);
+  if (options?.skipBurstDetection) {
+    bulkAssignedIds = new Set();
+  } else {
+    const assignmentRecords = conversations
+      .map((conv) => {
+        if (!conv.lastAssignmentAt) return null;
+        return {
+          conversationId: conv.id,
+          agentId: conv.firstTeammateId,
+          lastAssignmentAt: conv.lastAssignmentAt,
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+
+    bulkAssignedIds = detectBurstAssignments(assignmentRecords);
+  }
 
   const agentData = new Map<
     string,

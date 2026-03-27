@@ -209,7 +209,10 @@ export async function refreshRankings(
     const admins = await fetchAdmins();
 
     // Step 7: Aggregate per-agent metrics from full cached dataset
-    const agentMetrics = aggregateMetricsSlim(allConversations, admins);
+    // Skip burst detection for email — bulk assignments are normal email workflow
+    const agentMetrics = aggregateMetricsSlim(allConversations, admins, {
+      skipBurstDetection: channel === "email",
+    });
     console.log(`[Refresh] [${channel}] [${modeLabel}] Aggregated metrics for ${agentMetrics.length} agents from ${allConversations.length} cached conversations`);
 
     // Step 8: Compute rankings
